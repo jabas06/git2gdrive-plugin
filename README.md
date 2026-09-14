@@ -98,9 +98,9 @@ the plugin root, and `.cursor-plugin/marketplace.json` makes the repo itself a m
 ## Usage
 
 ```
-/git2gdrive:sync-git-to-gdrive --folder-id <DRIVE_FOLDER_ID> [--repo <local-repo-path>]   # Claude Code
-$git2gdrive:sync-git-to-gdrive --folder-id <DRIVE_FOLDER_ID> [--repo <local-repo-path>]   # Codex
-/sync-git-to-gdrive --folder-id <DRIVE_FOLDER_ID> [--repo <local-repo-path>]              # Cursor
+/git2gdrive:sync-git-to-gdrive [--folder-id <DRIVE_FOLDER_ID>] [--repo <local-repo-path>]   # Claude Code
+$git2gdrive:sync-git-to-gdrive [--folder-id <DRIVE_FOLDER_ID>] [--repo <local-repo-path>]   # Codex
+/sync-git-to-gdrive [--folder-id <DRIVE_FOLDER_ID>] [--repo <local-repo-path>]              # Cursor
 ```
 
 You can also just ask your agent to sync, mirror, or back up a repo's tracked files to Drive — the
@@ -110,13 +110,32 @@ skill is selected from its description too.
 
 | Parameter | Required | Meaning |
 |---|---|---|
-| `--folder-id <id>` | yes | The Drive folder that is the mirror root. |
+| `--folder-id <id>` | only without a pin | The Drive folder that is the mirror root. Optional once the repo's `AGENTS.md` pins one. |
 | `--repo <path>` | no | A **local** git work-tree. Defaults to the current directory. |
 
 The folder id is the last segment of the folder's Drive URL —
-`https://drive.google.com/drive/folders/<FOLDER_ID>`. There is no default: when it is missing, the
-skill asks instead of guessing. Remote/`http` repo URLs are rejected; the repo must be a local
-work-tree.
+`https://drive.google.com/drive/folders/<FOLDER_ID>`. The skill resolves it from the flag first, then
+from the repo's pin, and otherwise asks instead of guessing. Remote/`http` repo URLs are rejected;
+the repo must be a local work-tree.
+
+### Pinning the target folder
+
+After a successful sync of a repo that has no pin yet, the skill offers to record the Drive folder in
+the repo's `AGENTS.md` — it shows the snippet and asks before writing:
+
+```markdown
+## Google Drive mirror
+
+Tracked files of this repo are mirrored to:
+https://drive.google.com/drive/folders/<FOLDER_ID>
+
+Re-sync with the sync-git-to-gdrive skill; no folder id needs to be passed.
+```
+
+With that section committed, later runs need no `--folder-id`: the skill reads the URL and derives
+the id from its last path segment. An explicit flag still wins, and if it points somewhere else the
+skill flags the mismatch and offers to update the pin rather than rewriting it silently. The bundled
+script has no such lookup — running it directly always requires `--folder-id`.
 
 ### Running the script directly
 

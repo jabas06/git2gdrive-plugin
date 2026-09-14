@@ -31,16 +31,22 @@ its default.
 
 | Parameter | Source | Required | Meaning |
 |---|---|---|---|
-| folder id | `--folder-id` flag | yes | The Drive folder id that is the mirror root. |
+| folder id | `--folder-id` flag, else the repo's pin | yes | The Drive folder id that is the mirror root. |
 | repo path | `--repo` flag | no | Path to a **local** git work-tree. Default: current directory. |
 
-The folder id is **required** — there is no default; if the input does not carry one, ask for it
-rather than guessing. The repo must be a **local mounted git work-tree**; remote/http repo URLs are
-rejected. gws uses the billing project of the current authenticated session, so no project id is
-needed.
+Resolve the folder id in this order:
 
-> **Finding the folder id:** it is the last path segment of the folder's Drive URL —
-> `https://drive.google.com/drive/folders/<FOLDER_ID>`.
+1. The `--folder-id` flag, when the invocation carries one — an explicit flag always wins.
+2. Otherwise, the Drive folder URL pinned in the repo's `AGENTS.md` under a `Google Drive mirror`
+   heading. The id is the last path segment of
+   `https://drive.google.com/drive/folders/<FOLDER_ID>`; drop any `?query` or `#fragment` first.
+   Look for that file at the **work-tree root** of the `--repo` path (`git rev-parse
+   --show-toplevel`), not in the current directory. When the id comes from the pin, say so before
+   running — "using the Drive folder pinned in AGENTS.md" — so its source is visible.
+3. Otherwise, ask for the folder URL or id. There is no default; never guess one.
+
+The repo must be a **local mounted git work-tree**; remote/http repo URLs are rejected. gws uses the
+billing project of the current authenticated session, so no project id is needed.
 
 ## How to run
 
@@ -58,9 +64,37 @@ Run it **after committing changes** (and, for generated artifacts, after regener
 mirror reflects the current tracked tree. The script prints a per-file `create`/`update` log and a
 `N created, M updated` summary.
 
+The script itself always needs `--folder-id`: resolve the id first, then pass it through.
+
+## Pin the target folder (after a successful sync)
+
+When the script exits 0 **and** step 2 above found no pin, suggest recording the folder in the repo
+so the next run needs no folder id. Show this snippet, with `<FOLDER_ID>` replaced by the id just
+used, and **ask before writing anything**:
+
+```markdown
+## Google Drive mirror
+
+Tracked files of this repo are mirrored to:
+https://drive.google.com/drive/folders/<FOLDER_ID>
+
+Re-sync with the sync-git-to-gdrive skill; no folder id needs to be passed.
+```
+
+On approval, append the section to the work-tree root's `AGENTS.md`, or create that file containing
+just this section if it does not exist yet.
+
+Two cases where the suggestion changes:
+
+- **A pin already exists and matches** — say nothing; do not re-suggest on every sync.
+- **A pin exists but disagrees with an explicit `--folder-id`** — point out the mismatch and offer to
+  update the pinned URL to the folder just synced, again asking first. Never rewrite it silently.
+
 ## Verification
 
 - Re-run the script: the summary should report **0 created** and every file as **updated** (proves
   idempotency — no duplicates).
 - Spot-check the Drive folder: the tree matches the local tracked tree; same-named files in different
   local folders map to distinct Drive subfolders (not duplicates within one folder).
+- With the pin in place, re-run **without** `--folder-id`: the id resolves from `AGENTS.md`, the same
+  folder is targeted, and the summary again reports 0 created.

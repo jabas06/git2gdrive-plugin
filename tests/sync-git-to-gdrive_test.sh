@@ -65,6 +65,14 @@ test_tool_neutral_payload() {
   fi
 }
 
+test_skill_documents_agents_md_pin() {
+  local skill_text
+  skill_text="$(cat "$skill")"
+  assert_contains "skill names AGENTS.md as the pin file" "$skill_text" "AGENTS.md"
+  assert_contains "skill documents the pin heading" "$skill_text" "## Google Drive mirror"
+  assert_contains "skill asks before writing the pin" "$skill_text" "ask before writing"
+}
+
 test_missing_option_values() {
   local output status
 
@@ -130,6 +138,7 @@ test_drive_query_escaping() {
 }
 
 test_tool_neutral_payload
+test_skill_documents_agents_md_pin
 test_missing_option_values
 test_create_update_and_default_repo
 test_drive_query_escaping
