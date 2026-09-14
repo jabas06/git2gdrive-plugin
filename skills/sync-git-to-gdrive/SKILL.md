@@ -1,7 +1,6 @@
 ---
 name: sync-git-to-gdrive
 description: Sync, mirror, or back up a local git repo's tracked files (git ls-files) to a Google Drive folder — one-directional, update-in-place, create-if-missing, never deletes. Requires gws (authenticated), git, jq.
-argument-hint: "--folder-id <DRIVE_FOLDER_ID> [--repo <local-repo-path>]"
 ---
 
 # sync-git-to-gdrive
@@ -27,9 +26,8 @@ nested directory structure as Drive subfolders. One-directional, **local git →
 
 ## Input
 
-The text the user gave with this skill — after the slash command or `$`-mention, on an `ARGUMENTS:`
-line, or in the surrounding request — holds the arguments below; anything not present takes its
-default.
+Read the flags below from the skill invocation or surrounding request; anything not present takes
+its default.
 
 | Parameter | Source | Required | Meaning |
 |---|---|---|---|
@@ -46,17 +44,15 @@ needed.
 
 ## How to run
 
-Run the bundled script from this skill's `scripts/` directory:
+Resolve relative paths from this skill's directory and run the bundled script:
 
 ```bash
-"${CLAUDE_SKILL_DIR}/scripts/sync-git-to-gdrive.sh" \
+scripts/sync-git-to-gdrive.sh \
   --folder-id <DRIVE_FOLDER_ID> \
   [--repo <local-repo-path>]
 ```
 
-Run it in exactly that form. Claude Code substitutes `${CLAUDE_SKILL_DIR}`. If your client does not
-substitute it (Codex), resolve this skill's directory from the skills catalog: take this skill's
-`file:` path, expand its `rN/` prefix with the skill-roots table, and use that SKILL.md's directory.
+Supply `--folder-id` with the requested Drive folder id. Omit `--repo` to use the current directory.
 
 Run it **after committing changes** (and, for generated artifacts, after regenerating them) so the
 mirror reflects the current tracked tree. The script prints a per-file `create`/`update` log and a

@@ -10,7 +10,7 @@
 #                        (no pruning yet; a --prune opt-in may be added later).
 #
 # Mirrors exactly the output of `git ls-files` (tracked files only), recreating the nested
-# directory structure as Drive subfolders. Works the same for Claude Code and Codex.
+# directory structure as Drive subfolders. Runs independently of the agent client.
 #
 # Prerequisites: git, gws (authenticated Google Workspace CLI), jq.
 #
@@ -39,8 +39,24 @@ repo_path="$PWD"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --folder-id)  folder_id="${2:-}";  shift 2 ;;
-    --repo)       repo_path="${2:-}";  shift 2 ;;
+    --folder-id)
+      if [[ $# -lt 2 || -z "$2" || "$2" == -* ]]; then
+        echo "error: --folder-id requires a value." >&2
+        usage >&2
+        exit 2
+      fi
+      folder_id="$2"
+      shift 2
+      ;;
+    --repo)
+      if [[ $# -lt 2 || -z "$2" || "$2" == -* ]]; then
+        echo "error: --repo requires a value." >&2
+        usage >&2
+        exit 2
+      fi
+      repo_path="$2"
+      shift 2
+      ;;
     -h|--help)    usage; exit 0 ;;
     *) echo "error: unknown argument: $1" >&2; usage >&2; exit 2 ;;
   esac
@@ -75,8 +91,8 @@ ENSURED_ID=""
 created=0
 updated=0
 
-# Escape single quotes for use inside a Drive `q` string literal ('  ->  \').
-q_escape() { printf '%s' "$1" | sed "s/'/\\\\'/g"; }
+# Escape backslashes and single quotes for use inside a Drive `q` string literal.
+q_escape() { printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e "s/'/\\\\'/g"; }
 
 # drive_find_child <parent_id> <name> <kind>
 #   kind = "folder" -> match only folders; "file" -> match only non-folders.
