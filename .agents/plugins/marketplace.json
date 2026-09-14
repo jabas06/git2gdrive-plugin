@@ -1,0 +1,22 @@
+{
+  "name": "git2gdrive",
+  "description": "Mirror a local git repository's tracked files to a Google Drive folder.",
+  "interface": {
+    "displayName": "git → Google Drive"
+  },
+  "plugins": [
+    {
+      "name": "git2gdrive",
+      "description": "Mirror a local git repo's tracked files to a Google Drive folder (one-directional, update-in-place, never deletes).",
+      "source": {
+        "source": "local",
+        "path": "./"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "productivity"
+    }
+  ]
+}

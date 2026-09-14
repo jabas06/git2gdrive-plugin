@@ -1,0 +1,17 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "git2gdrive",
+  "description": "Mirror a local git repository's tracked files to a Google Drive folder.",
+  "owner": {
+    "name": "jabas06",
+    "url": "https://github.com/jabas06"
+  },
+  "plugins": [
+    {
+      "name": "git2gdrive",
+      "description": "Mirror a local git repo's tracked files to a Google Drive folder (one-directional, update-in-place, never deletes).",
+      "source": "./",
+      "category": "development"
+    }
+  ]
+}
