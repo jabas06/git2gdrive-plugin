@@ -1,7 +1,7 @@
 # git2gdrive
 
 Mirror a **local git repository's tracked files into a Google Drive folder** — one-directional,
-idempotent, and safe to re-run. Packaged as an agent plugin for Claude Code and Codex.
+idempotent, and safe to re-run. Packaged as an agent plugin for Claude Code, Codex, and Cursor.
 
 The target Drive folder is a parameter, so one install works for every repo you own.
 
@@ -78,11 +78,22 @@ claude plugin marketplace add ./git2gdrive-plugin && claude plugin install git2g
 codex  plugin marketplace add ./git2gdrive-plugin && codex  plugin add git2gdrive@git2gdrive
 ```
 
-**Cursor** does not import plugins; copy the skill into its user skills root instead:
+**Cursor**
+
+Cursor has no plugin-install CLI. Two ways in:
+
+*From a local clone* — link the repo into Cursor's local plugin root, then restart Cursor (or run
+**Developer: Reload Window**):
 
 ```bash
-cp -R git2gdrive-plugin/skills/sync-git-to-gdrive ~/.cursor/skills/
+ln -s "$PWD/git2gdrive-plugin" ~/.cursor/plugins/local/git2gdrive
 ```
+
+*From the marketplace* — **Customize** → **+ Add** → **From GitHub Repository**, paste the repo URL,
+then install the plugin.
+
+Either way the skill shows up under **Customize**. Cursor reads `.cursor-plugin/plugin.json` from
+the plugin root, and `.cursor-plugin/marketplace.json` makes the repo itself a marketplace source.
 
 ## Usage
 

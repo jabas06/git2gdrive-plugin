@@ -1,0 +1,35 @@
+{
+  "name": "git2gdrive",
+  "owner": {
+    "name": "jabas06"
+  },
+  "metadata": {
+    "description": "Mirror a local git repository's tracked files to a Google Drive folder.",
+    "version": "1.1.0"
+  },
+  "plugins": [
+    {
+      "name": "git2gdrive",
+      "description": "Mirror a local git repo's tracked files to a Google Drive folder (one-directional, update-in-place, never deletes).",
+      "source": "./",
+      "version": "1.1.0",
+      "author": {
+        "name": "jabas06"
+      },
+      "homepage": "https://github.com/jabas06/git2gdrive-plugin",
+      "repository": "https://github.com/jabas06/git2gdrive-plugin",
+      "license": "MIT",
+      "category": "productivity",
+      "keywords": [
+        "git",
+        "google-drive",
+        "gdrive",
+        "sync",
+        "mirror",
+        "backup",
+        "gws"
+      ],
+      "skills": "./skills"
+    }
+  ]
+}
