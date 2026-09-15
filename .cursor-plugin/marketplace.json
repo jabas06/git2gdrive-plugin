@@ -5,14 +5,14 @@
   },
   "metadata": {
     "description": "Mirror a local git repository's tracked files to a Google Drive folder.",
-    "version": "1.2.0"
+    "version": "1.3.0"
   },
   "plugins": [
     {
       "name": "git2gdrive",
       "description": "Mirror a local git repo's tracked files to a Google Drive folder (one-directional, update-in-place, never deletes).",
       "source": "./",
-      "version": "1.2.0",
+      "version": "1.3.0",
       "author": {
         "name": "jabas06"
       },
