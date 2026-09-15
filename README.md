@@ -15,12 +15,13 @@ directory structure as Drive subfolders under a folder you choose. The direction
   content is updated in place, so the Drive file id and any shared links stay stable.
 - **Create-if-missing** — a file is created only when absent, so re-running never produces
   duplicates.
-- **Never deletes** — nothing in Drive is removed or trashed.
+- **Never deletes by default** — nothing in Drive is removed or trashed unless you explicitly ask
+  for a prune sync with `--prune` (see [Prune sync](#prune-sync)).
 
 ## What it does *not* do
 
-- **No pruning.** Files deleted or renamed locally leave their old Drive copies behind; clean those
-  up by hand.
+- **No pruning unless asked.** Files deleted or renamed locally leave their old Drive copies behind
+  until you run a prune sync.
 - **No untracked files.** Anything untracked or git-ignored is skipped entirely.
 - **Uncommitted edits *are* uploaded.** File content is read from the working tree, not from a
   commit, so local modifications to tracked files ship as-is. Commit first if you want the mirror to
@@ -98,13 +99,14 @@ the plugin root, and `.cursor-plugin/marketplace.json` makes the repo itself a m
 ## Usage
 
 ```
-/git2gdrive:sync-git-to-gdrive [--folder-id <DRIVE_FOLDER_ID>] [--repo <local-repo-path>]   # Claude Code
-$git2gdrive:sync-git-to-gdrive [--folder-id <DRIVE_FOLDER_ID>] [--repo <local-repo-path>]   # Codex
-/sync-git-to-gdrive [--folder-id <DRIVE_FOLDER_ID>] [--repo <local-repo-path>]              # Cursor
+/git2gdrive:sync-git-to-gdrive [--folder-id <DRIVE_FOLDER_ID>] [--repo <local-repo-path>] [--prune]   # Claude Code
+$git2gdrive:sync-git-to-gdrive [--folder-id <DRIVE_FOLDER_ID>] [--repo <local-repo-path>] [--prune]   # Codex
+/sync-git-to-gdrive [--folder-id <DRIVE_FOLDER_ID>] [--repo <local-repo-path>] [--prune]              # Cursor
 ```
 
 You can also just ask your agent to sync, mirror, or back up a repo's tracked files to Drive — the
-skill is selected from its description too.
+skill is selected from its description too. Asking for a "prune sync" or to "prune" is what turns on
+`--prune`.
 
 ### Parameters
 
@@ -112,6 +114,7 @@ skill is selected from its description too.
 |---|---|---|
 | `--folder-id <id>` | only without a pin | The Drive folder that is the mirror root. Optional once the repo's `AGENTS.md` pins one. |
 | `--repo <path>` | no | A **local** git work-tree. Defaults to the current directory. |
+| `--prune` | no | Prune sync: also trash stale Drive files and empty folders. Previews first; the agent asks before applying with `--yes`. |
 
 The folder id is the last segment of the folder's Drive URL —
 `https://drive.google.com/drive/folders/<FOLDER_ID>`. The skill resolves it from the flag first, then
@@ -137,6 +140,26 @@ the id from its last path segment. An explicit flag still wins, and if it points
 skill flags the mismatch and offers to update the pin rather than rewriting it silently. The bundled
 script has no such lookup — running it directly always requires `--folder-id`.
 
+### Prune sync
+
+The default sync only adds and updates. A **prune sync** additionally moves to the Drive trash every
+ordinary file under the mirror root that no longer matches a tracked file, and any subfolder left
+empty — the mirror folder is treated as dedicated to the repo, so hand-added files count as stale
+too. Google Docs/Sheets/Slides, shortcuts and other Drive-native items are never touched, and
+nothing is permanently deleted: everything lands in the trash, where it stays recoverable.
+
+It is always two steps. The first run previews, the second applies:
+
+```bash
+skills/sync-git-to-gdrive/scripts/sync-git-to-gdrive.sh --folder-id <id> --prune         # sync + "would trash ..." list, nothing removed
+skills/sync-git-to-gdrive/scripts/sync-git-to-gdrive.sh --folder-id <id> --prune --yes   # sync + trash the listed items
+```
+
+Through the skill, the agent runs the preview, shows you the list and only re-runs with `--yes`
+after you confirm. It never turns pruning on for a plain "sync"; you have to ask for a prune sync.
+The script refuses to prune a repo with zero tracked files (exit 4), since that would empty the
+folder.
+
 ### Running the script directly
 
 The skill is a thin wrapper around a bundled shell script, which you can also run yourself:
@@ -155,6 +178,10 @@ folder is resolved once). It then looks for a non-folder child with the same nam
 is updated with `gws drive files update --upload`, otherwise a new file is created with
 `gws drive files create --upload`. A per-file `create`/`update` log and an
 `N created, M updated` summary are printed to stderr.
+
+With `--prune`, the script remembers the id of every file it created or updated, then lists the
+Drive tree under the root (one paginated listing per folder) and trashes any ordinary file whose id
+it did not touch, followed by any folder left empty, deepest first.
 
 ## Verifying a sync
 

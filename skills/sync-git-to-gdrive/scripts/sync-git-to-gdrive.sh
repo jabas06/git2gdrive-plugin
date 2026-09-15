@@ -6,8 +6,8 @@
 #   - update-in-place : an existing Drive file is matched by name within its parent folder and its
 #                       content is updated in place, so the Drive file id and any shared links stay stable;
 #   - create-if-missing: a file is created only when absent, so re-running never produces duplicates;
-#   - never deletes    : stale Drive copies of files removed/renamed locally are left as-is
-#                        (no pruning yet; a --prune opt-in may be added later).
+#   - never deletes by default: stale Drive copies of files removed/renamed locally are left as-is
+#                        unless --prune is given (see below).
 #
 # Mirrors exactly the output of `git ls-files` (tracked files only), recreating the nested
 # directory structure as Drive subfolders. Runs independently of the agent client.
@@ -15,12 +15,18 @@
 # Prerequisites: git, gws (authenticated Google Workspace CLI), jq.
 #
 # Usage:
-#   sync-git-to-gdrive.sh --folder-id <DRIVE_FOLDER_ID> [--repo <path>]
+#   sync-git-to-gdrive.sh --folder-id <DRIVE_FOLDER_ID> [--repo <path>] [--prune [--yes]]
 #
 # Parameters:
 #   --folder-id <id>  (required) target Drive folder id (the mirror root).
 #   --repo <path>     (optional) path to a LOCAL git work-tree; default: $PWD.
 #                     Remote/http repo URLs are NOT supported.
+#   --prune           after syncing, list every ordinary file under the mirror root that no
+#                     longer corresponds to a tracked file, plus the subfolders that would be
+#                     left empty ("would trash ..."). Nothing is removed without --yes.
+#   --yes             with --prune: actually move those items to the Drive trash (recoverable).
+#                     Google Docs/Sheets/Slides, shortcuts and other Drive-native items are
+#                     never touched. Refused when the repo has no tracked files.
 #
 # gws uses the billing project of the current authenticated session, so no
 # project id is needed.
@@ -30,12 +36,14 @@ set -euo pipefail
 FOLDER_MIME="application/vnd.google-apps.folder"
 
 usage() {
-  sed -n '3,26p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '3,32p' "$0" | sed 's/^# \{0,1\}//'
 }
 
 # --- parse args ---
 folder_id=""
 repo_path="$PWD"
+prune=0
+yes=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -57,6 +65,8 @@ while [[ $# -gt 0 ]]; do
       repo_path="$2"
       shift 2
       ;;
+    --prune)      prune=1; shift ;;
+    --yes)        yes=1; shift ;;
     -h|--help)    usage; exit 0 ;;
     *) echo "error: unknown argument: $1" >&2; usage >&2; exit 2 ;;
   esac
@@ -65,6 +75,9 @@ done
 # --- validate inputs ---
 if [[ -z "$folder_id" ]]; then
   echo "error: missing target Drive folder id (--folder-id)." >&2; usage >&2; exit 2
+fi
+if [[ "$yes" -eq 1 && "$prune" -eq 0 ]]; then
+  echo "error: --yes only makes sense together with --prune." >&2; usage >&2; exit 2
 fi
 if [[ "$repo_path" == *"://"* ]]; then
   echo "error: --repo must be a LOCAL path, not a URL ('$repo_path'). Remote repos are not supported." >&2; exit 2
@@ -88,8 +101,14 @@ cd "$repo_root"
 FOLDER_CACHE=$'\n.\t'"$folder_id"$'\n'
 ENSURED_ID=""
 
+# Drive file ids created or updated by this run — everything else under the root is stale.
+KEEP_IDS=$'\n'
+
 created=0
 updated=0
+trashed_files=0
+trashed_folders=0
+preserved=0
 
 # Escape backslashes and single quotes for use inside a Drive `q` string literal.
 q_escape() { printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e "s/'/\\\\'/g"; }
@@ -132,6 +151,7 @@ ensure_folder() {
   id="$(drive_find_child "$parent_id" "$base" folder)"
   if [[ -z "$id" ]]; then
     id="$(gws drive files create \
+      --params "$(jq -nc '{supportsAllDrives:true}')" \
       --json "$(jq -nc --arg name "$base" --arg mime "$FOLDER_MIME" --arg pid "$parent_id" \
         '{name:$name, mimeType:$mime, parents:[$pid]}')" \
       --format json | jq -r '.id')"
@@ -156,14 +176,81 @@ sync_file() {
       --upload "$path" >/dev/null
     echo "  update $path" >&2
     updated=$((updated + 1))
+    KEEP_IDS="${KEEP_IDS}${existing_id}"$'\n'
   else
-    gws drive files create \
+    existing_id="$(gws drive files create \
       --params "$(jq -nc '{supportsAllDrives:true}')" \
       --json "$(jq -nc --arg name "$name" --arg pid "$parent_id" '{name:$name, parents:[$pid]}')" \
-      --upload "$path" >/dev/null
+      --upload "$path" --format json | jq -r '.id')"
     echo "  create $path" >&2
     created=$((created + 1))
+    KEEP_IDS="${KEEP_IDS}${existing_id}"$'\n'
   fi
+}
+
+# --- prune (opt-in) ---
+
+# is_kept <id> — true when the id was created/updated by this run or is a folder the tree needs.
+is_kept() {
+  case "$KEEP_IDS" in *$'\n'"$1"$'\n'*) return 0 ;; esac
+  case "$FOLDER_CACHE" in *$'\t'"$1"$'\n'*) return 0 ;; esac
+  return 1
+}
+
+# list_children <folder_id> — one "id<TAB>name<TAB>mimeType" line per live child, all pages.
+list_children() {
+  gws drive files list \
+    --params "$(jq -nc --arg q "'$1' in parents and trashed=false" \
+      '{q:$q, fields:"nextPageToken,files(id,name,mimeType)", pageSize:1000,
+        includeItemsFromAllDrives:true, supportsAllDrives:true}')" \
+    --page-all --page-limit 100 --format json </dev/null \
+    | jq -r '.files[]? | [.id, .name, .mimeType] | @tsv'
+}
+
+# trash_item <id> <label> — move to Drive trash (recoverable), or only report it without --yes.
+trash_item() {
+  if [[ "$yes" -eq 1 ]]; then
+    gws drive files update \
+      --params "$(jq -nc --arg id "$1" '{fileId:$id, supportsAllDrives:true}')" \
+      --json '{"trashed":true}' >/dev/null </dev/null
+    echo "  trash  $2" >&2
+  else
+    echo "  would trash $2" >&2
+  fi
+}
+
+# prune_folder <folder_id> <relative_dir> — recurse, trash stale files, then stale empty folders.
+# Sets PRUNE_REMAINING to the number of children left in the folder afterwards.
+PRUNE_REMAINING=0
+prune_folder() {
+  local fid="$1" reldir="$2" children remaining=0 cid cname cmime label
+  children="$(list_children "$fid")"
+  [[ -z "$children" ]] && { PRUNE_REMAINING=0; return 0; }
+
+  while IFS=$'\t' read -r cid cname cmime; do
+    [[ -z "$cid" ]] && continue
+    if [[ "$reldir" == "." ]]; then label="$cname"; else label="$reldir/$cname"; fi
+
+    if [[ "$cmime" == "$FOLDER_MIME" ]]; then
+      prune_folder "$cid" "$label"
+      if is_kept "$cid" || [[ "$PRUNE_REMAINING" -gt 0 ]]; then
+        remaining=$((remaining + 1))
+      else
+        trash_item "$cid" "$label/"
+        trashed_folders=$((trashed_folders + 1))
+      fi
+    elif is_kept "$cid"; then
+      remaining=$((remaining + 1))
+    elif [[ "$cmime" == application/vnd.google-apps.* ]]; then
+      echo "  keep   $label (Drive-native item, never touched)" >&2
+      preserved=$((preserved + 1))
+      remaining=$((remaining + 1))
+    else
+      trash_item "$cid" "$label"
+      trashed_files=$((trashed_files + 1))
+    fi
+  done <<< "$children"
+  PRUNE_REMAINING=$remaining
 }
 
 main() {
@@ -174,8 +261,29 @@ main() {
     count=$((count + 1))
   done < <(git ls-files -z)
 
+  if [[ "$prune" -eq 0 ]]; then
+    echo "" >&2
+    echo "Done. ${count} tracked files processed: ${created} created, ${updated} updated." >&2
+    return 0
+  fi
+
+  if [[ "$count" -eq 0 ]]; then
+    echo "" >&2
+    echo "error: refusing to prune — the repo has no tracked files, so everything under the Drive folder would be trashed." >&2
+    exit 4
+  fi
+
   echo "" >&2
-  echo "Done. ${count} tracked files processed: ${created} created, ${updated} updated." >&2
+  echo "Pruning stale items under Drive folder ${folder_id}" >&2
+  prune_folder "$folder_id" "."
+
+  echo "" >&2
+  if [[ "$yes" -eq 1 ]]; then
+    echo "Done. ${count} tracked files processed: ${created} created, ${updated} updated, ${trashed_files} files trashed, ${trashed_folders} folders trashed, ${preserved} Drive-native items kept." >&2
+  else
+    echo "Done. ${count} tracked files processed: ${created} created, ${updated} updated, ${trashed_files} files would be trashed, ${trashed_folders} folders would be trashed, ${preserved} Drive-native items kept." >&2
+    echo "Nothing was removed. Re-run with --prune --yes to move the listed items to the Drive trash." >&2
+  fi
 }
 
 main
