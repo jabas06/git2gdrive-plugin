@@ -65,12 +65,20 @@ test_tool_neutral_payload() {
   fi
 }
 
-test_skill_documents_agents_md_pin() {
+test_skill_documents_pin() {
   local skill_text
   skill_text="$(cat "$skill")"
   assert_contains "skill names AGENTS.md as the pin file" "$skill_text" "AGENTS.md"
+  assert_contains "skill names README.md as the fallback pin file" "$skill_text" "Otherwise \`README.md\`"
   assert_contains "skill documents the pin heading" "$skill_text" "## Google Drive mirror"
-  assert_contains "skill asks before writing the pin" "$skill_text" "ask before writing"
+  assert_contains "skill pins without asking first" "$skill_text" "do not ask in the conversation first"
+  assert_contains "skill defers the pin to the permission mode" "$skill_text" "permission mode"
+  assert_contains "skill never creates a pin file" "$skill_text" "Never create either file"
+  if [[ "$skill_text" == *"ask before writing"* ]]; then
+    fail "skill no longer asks before writing the pin" "found 'ask before writing'"
+  else
+    pass "skill no longer asks before writing the pin"
+  fi
 }
 
 test_missing_option_values() {
@@ -246,7 +254,7 @@ test_skill_documents_prune() {
 }
 
 test_tool_neutral_payload
-test_skill_documents_agents_md_pin
+test_skill_documents_pin
 test_skill_documents_prune
 test_missing_option_values
 test_prune_flag_validation
