@@ -39,12 +39,14 @@ its default.
 Resolve the folder id in this order:
 
 1. The `--folder-id` flag, when the invocation carries one — an explicit flag always wins.
-2. Otherwise, the Drive folder URL pinned in the repo's `AGENTS.md` under a `Google Drive mirror`
-   heading. The id is the last path segment of
+2. Otherwise, the Drive folder URL pinned under a `Google Drive mirror` heading. Check the repo's
+   `AGENTS.md` first and use its pin if it has one; consult `README.md` only when `AGENTS.md` is
+   absent or has no such section. If both pin different folders, `AGENTS.md` wins — mention the
+   disagreement. The id is the last path segment of
    `https://drive.google.com/drive/folders/<FOLDER_ID>`; drop any `?query` or `#fragment` first.
-   Look for that file at the **work-tree root** of the `--repo` path (`git rev-parse
+   Look for those files at the **work-tree root** of the `--repo` path (`git rev-parse
    --show-toplevel`), not in the current directory. When the id comes from the pin, say so before
-   running — "using the Drive folder pinned in AGENTS.md" — so its source is visible.
+   running — "using the Drive folder pinned in AGENTS.md" (or README.md) — so its source is visible.
 3. Otherwise, ask for the folder URL or id. There is no default; never guess one.
 
 The repo must be a **local mounted git work-tree**; remote/http repo URLs are rejected. gws uses the
@@ -96,9 +98,16 @@ wrong). The script refuses to prune when the repo has no tracked files (exit 4).
 
 ## Pin the target folder (after a successful sync)
 
-When the script exits 0 **and** step 2 above found no pin, suggest recording the folder in the repo
-so the next run needs no folder id. Show this snippet, with `<FOLDER_ID>` replaced by the id just
-used, and **ask before writing anything**:
+When the script exits 0, first look for an existing `Google Drive mirror` section in the work-tree
+root's `AGENTS.md` and `README.md` — do this even when `--folder-id` made step 2 unnecessary. Never
+add a second `Google Drive mirror` section; if one exists but is incomplete or malformed (missing or
+unparsable URL), fix it in place instead.
+
+If neither file has such a section, record the folder in the repo yourself so the next run needs no
+folder id — do not ask in the conversation first. Make the change as an ordinary file edit; the
+agent's permission mode governs it like any other edit, and nothing else prompts for it. Append this
+section at the end of the file, preceded by a blank line, with `<FOLDER_ID>` replaced by the id just
+used:
 
 ```markdown
 ## Google Drive mirror
@@ -109,14 +118,24 @@ https://drive.google.com/drive/folders/<FOLDER_ID>
 Re-sync with the sync-git-to-gdrive skill; no folder id needs to be passed.
 ```
 
-On approval, append the section to the work-tree root's `AGENTS.md`, or create that file containing
-just this section if it does not exist yet.
+Pick the file at the work-tree root of the `--repo` path (as in step 2), in this order:
 
-Two cases where the suggestion changes:
+1. `AGENTS.md`, when it exists.
+2. Otherwise `README.md`, when it exists.
+3. Otherwise pin nothing. **Never create either file** just to hold the pin; say that no pin was
+   written because the repo has neither file, so the next run needs `--folder-id` again.
 
-- **A pin already exists and matches** — say nothing; do not re-suggest on every sync.
-- **A pin exists but disagrees with an explicit `--folder-id`** — point out the mismatch and offer to
-  update the pinned URL to the folder just synced, again asking first. Never rewrite it silently.
+After writing, say which file now holds the pin. If the edit is rejected, accept that: do not retry
+or fall back to the other file, and mention that the next run needs `--folder-id`. Pinning only
+edits the working tree; committing the change is left to the user.
+
+Two cases where the pin step changes:
+
+- **A pin already exists and matches** — say nothing and edit nothing.
+- **A pin exists but disagrees with an explicit `--folder-id`** — point out the mismatch, naming both
+  the folder the pin currently holds and the one just synced, then update the pinned URL in place,
+  in whichever file holds it. The permission mode again governs the edit. If it is rejected, say
+  that the pin still names the previous folder, so a run without `--folder-id` will go there.
 
 ## Verification
 
@@ -124,5 +143,5 @@ Two cases where the suggestion changes:
   idempotency — no duplicates).
 - Spot-check the Drive folder: the tree matches the local tracked tree; same-named files in different
   local folders map to distinct Drive subfolders (not duplicates within one folder).
-- With the pin in place, re-run **without** `--folder-id`: the id resolves from `AGENTS.md`, the same
+- With the pin in place, re-run **without** `--folder-id`: the id resolves from the pin, the same
   folder is targeted, and the summary again reports 0 created.
