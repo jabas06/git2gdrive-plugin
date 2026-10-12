@@ -5,6 +5,7 @@ set -u
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 script="$repo_root/skills/sync-git-to-gdrive/scripts/sync-git-to-gdrive.sh"
 skill="$repo_root/skills/sync-git-to-gdrive/SKILL.md"
+readme="$repo_root/README.md"
 test_root="$(mktemp -d "${TMPDIR:-/tmp}/git2gdrive-tests.XXXXXX")"
 trap 'rm -rf -- "$test_root"' EXIT
 
@@ -66,18 +67,25 @@ test_tool_neutral_payload() {
 }
 
 test_skill_documents_pin() {
-  local skill_text
+  local skill_text readme_text matches
   skill_text="$(cat "$skill")"
-  assert_contains "skill names AGENTS.md as the pin file" "$skill_text" "AGENTS.md"
+  readme_text="$(cat "$readme")"
+  assert_contains "skill reads the AGENTS.md pin first" "$skill_text" "Check the repo's
+   \`AGENTS.md\` first"
+  assert_contains "skill writes the pin to AGENTS.md first" "$skill_text" "1. \`AGENTS.md\`, when it exists."
   assert_contains "skill names README.md as the fallback pin file" "$skill_text" "Otherwise \`README.md\`"
   assert_contains "skill documents the pin heading" "$skill_text" "## Google Drive mirror"
   assert_contains "skill pins without asking first" "$skill_text" "do not ask in the conversation first"
   assert_contains "skill defers the pin to the permission mode" "$skill_text" "permission mode"
   assert_contains "skill never creates a pin file" "$skill_text" "Never create either file"
-  if [[ "$skill_text" == *"ask before writing"* ]]; then
-    fail "skill no longer asks before writing the pin" "found 'ask before writing'"
+  assert_contains "skill never duplicates the pin section" "$skill_text" "Never
+add a second \`Google Drive mirror\` section"
+  assert_contains "README documents the README.md fallback" "$readme_text" "otherwise into its \`README.md\`"
+  matches="$(grep -Ein 'ask before writing|offers? to|asking first' "$skill" "$readme" || true)"
+  if [[ -z "$matches" ]]; then
+    pass "docs no longer ask before writing the pin"
   else
-    pass "skill no longer asks before writing the pin"
+    fail "docs no longer ask before writing the pin" "$matches"
   fi
 }
 

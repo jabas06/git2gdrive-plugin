@@ -39,8 +39,10 @@ its default.
 Resolve the folder id in this order:
 
 1. The `--folder-id` flag, when the invocation carries one — an explicit flag always wins.
-2. Otherwise, the Drive folder URL pinned under a `Google Drive mirror` heading in the repo's
-   `AGENTS.md` or, failing that, its `README.md`. The id is the last path segment of
+2. Otherwise, the Drive folder URL pinned under a `Google Drive mirror` heading. Check the repo's
+   `AGENTS.md` first and use its pin if it has one; consult `README.md` only when `AGENTS.md` is
+   absent or has no such section. If both pin different folders, `AGENTS.md` wins — mention the
+   disagreement. The id is the last path segment of
    `https://drive.google.com/drive/folders/<FOLDER_ID>`; drop any `?query` or `#fragment` first.
    Look for those files at the **work-tree root** of the `--repo` path (`git rev-parse
    --show-toplevel`), not in the current directory. When the id comes from the pin, say so before
@@ -96,10 +98,15 @@ wrong). The script refuses to prune when the repo has no tracked files (exit 4).
 
 ## Pin the target folder (after a successful sync)
 
-When the script exits 0 **and** step 2 above found no pin, record the folder in the repo yourself so
-the next run needs no folder id — do not ask in the conversation first. Make the change as an
-ordinary file edit; the agent's own permission mode is what approves or rejects it, so the user
-still sees and controls every write. Append this section, with `<FOLDER_ID>` replaced by the id just
+When the script exits 0, first look for an existing `Google Drive mirror` section in the work-tree
+root's `AGENTS.md` and `README.md` — do this even when `--folder-id` made step 2 unnecessary. Never
+add a second `Google Drive mirror` section; if one exists but is incomplete or malformed (missing or
+unparsable URL), fix it in place instead.
+
+If neither file has such a section, record the folder in the repo yourself so the next run needs no
+folder id — do not ask in the conversation first. Make the change as an ordinary file edit; the
+agent's permission mode governs it like any other edit, and nothing else prompts for it. Append this
+section at the end of the file, preceded by a blank line, with `<FOLDER_ID>` replaced by the id just
 used:
 
 ```markdown
@@ -111,7 +118,7 @@ https://drive.google.com/drive/folders/<FOLDER_ID>
 Re-sync with the sync-git-to-gdrive skill; no folder id needs to be passed.
 ```
 
-Pick the file at the work-tree root, in this order:
+Pick the file at the work-tree root of the `--repo` path (as in step 2), in this order:
 
 1. `AGENTS.md`, when it exists.
 2. Otherwise `README.md`, when it exists.
@@ -125,9 +132,10 @@ edits the working tree; committing the change is left to the user.
 Two cases where the pin step changes:
 
 - **A pin already exists and matches** — say nothing and edit nothing.
-- **A pin exists but disagrees with an explicit `--folder-id`** — point out the mismatch and update
-  the pinned URL in place, in whichever file holds it, to the folder just synced. The permission
-  mode again approves or rejects the edit; never add a second `Google Drive mirror` section.
+- **A pin exists but disagrees with an explicit `--folder-id`** — point out the mismatch, naming both
+  the folder the pin currently holds and the one just synced, then update the pinned URL in place,
+  in whichever file holds it. The permission mode again governs the edit. If it is rejected, say
+  that the pin still names the previous folder, so a run without `--folder-id` will go there.
 
 ## Verification
 

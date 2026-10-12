@@ -141,11 +141,15 @@ The pin goes into the work-tree root's `AGENTS.md` when it exists, otherwise int
 If the repo has neither, nothing is pinned — the skill never creates a file just to hold the pin —
 and the next run needs `--folder-id` again. The edit is left uncommitted for you to commit.
 
+The skill never writes a second `Google Drive mirror` section: an existing one, even an incomplete
+one, is fixed in place.
+
 With that section committed, later runs need no `--folder-id`: the skill reads the URL from
-`AGENTS.md`, then `README.md`, and derives the id from its last path segment. An explicit flag still
-wins; if it points somewhere else, the skill flags the mismatch and updates the pinned URL in place,
-again through a regular edit your permission mode governs. The bundled script has no such lookup —
-running it directly always requires `--folder-id`.
+`AGENTS.md`, then `README.md` (`AGENTS.md` wins if both pin different folders), and derives the id
+from its last path segment. An explicit flag still wins; if it points somewhere else, the skill
+names both folders and updates the pinned URL in place, again through a regular edit your
+permission mode governs. Reject that edit and the pin keeps the previous folder. The bundled script
+has no such lookup — running it directly always requires `--folder-id`.
 
 ### Prune sync
 
