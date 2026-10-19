@@ -23,6 +23,9 @@ directory structure as Drive subfolders under a folder you choose. The direction
 - **No pruning unless asked.** Files deleted or renamed locally leave their old Drive copies behind
   until you run a prune sync.
 - **No untracked files.** Anything untracked or git-ignored is skipped entirely.
+- **Regular files only.** A tracked path that isn't a regular file is skipped and logged rather than
+  failing the sync: a symlink to a directory, a dangling symlink, a submodule, or a tracked file
+  deleted from the working tree. A symlink to a regular file uploads the content it points to.
 - **Uncommitted edits *are* uploaded.** File content is read from the working tree, not from a
   commit, so local modifications to tracked files ship as-is. Commit first if you want the mirror to
   match a commit.
@@ -168,8 +171,8 @@ skills/sync-git-to-gdrive/scripts/sync-git-to-gdrive.sh --folder-id <id> --prune
 
 Through the skill, the agent runs the preview, shows you the list and only re-runs with `--yes`
 after you confirm. It never turns pruning on for a plain "sync"; you have to ask for a prune sync.
-The script refuses to prune a repo with zero tracked files (exit 4), since that would empty the
-folder.
+The script refuses to prune when no tracked file can be mirrored (exit 4), since that would empty the
+folder. Skipped paths count as stale, so a Drive copy left from an earlier sync of one is trashed.
 
 ### Running the script directly
 
@@ -183,12 +186,13 @@ skills/sync-git-to-gdrive/scripts/sync-git-to-gdrive.sh \
 
 ## How it works
 
-`git ls-files -z` enumerates the tracked files. For each one, the script walks the file's parent
+`git ls-files -z` enumerates the tracked files, and any path that isn't a regular file (after
+following symlinks) is skipped. For each remaining one, the script walks the file's parent
 directory chain, finding or creating a matching Drive subfolder at each level (memoized, so each
 folder is resolved once). It then looks for a non-folder child with the same name: if one exists it
 is updated with `gws drive files update --upload`, otherwise a new file is created with
-`gws drive files create --upload`. A per-file `create`/`update` log and an
-`N created, M updated` summary are printed to stderr.
+`gws drive files create --upload`. A per-file `create`/`update`/`skip` log and an
+`N created, M updated` summary (plus `K skipped` when any) are printed to stderr.
 
 With `--prune`, the script remembers the id of every file it created or updated, then lists the
 Drive tree under the root (one paginated listing per folder) and trashes any ordinary file whose id

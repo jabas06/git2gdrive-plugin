@@ -253,6 +253,56 @@ test_prune_refuses_empty_repo() {
   assert_eq "prune with no tracked files trashes nothing" "" "$(cat "$case_root/trashed")"
 }
 
+test_skips_paths_that_are_not_regular_files() {
+  local case_root="$test_root/non-regular" repo fake_bin output status calls
+  repo="$case_root/repo"
+  fake_bin="$case_root/bin"
+  init_repo "$repo"
+  mkdir -p "$repo/skills" "$repo/vendor/lib"
+  printf 'skill\n' > "$repo/skills/SKILL.md"
+  printf 'gone\n' > "$repo/deleted.txt"
+  ln -s skills "$repo/skills-link"
+  ln -s nowhere.txt "$repo/dangling-link"
+  ln -s skills/SKILL.md "$repo/file-link"
+  git -C "$repo" add -- skills/SKILL.md deleted.txt skills-link dangling-link file-link
+  git -C "$repo" update-index --add --cacheinfo "160000,$(git hash-object -t blob /dev/null),vendor/lib"
+  rm "$repo/deleted.txt"
+  make_fake_gws "$fake_bin"
+
+  output="$(PATH="$fake_bin:$PATH" FAKE_GWS_MODE=missing \
+    FAKE_GWS_CALLS="$case_root/calls" FAKE_GWS_PARAMS="$case_root/params" \
+    "$script" --folder-id root-folder --repo "$repo" 2>&1)"
+  status=$?
+  assert_eq "non-regular paths do not fail the sync" "0" "$status"
+  assert_contains "symlink to a directory is skipped" "$output" "skip   skills-link (symlink to a directory)"
+  assert_contains "dangling symlink is skipped" "$output" "skip   dangling-link (dangling symlink)"
+  assert_contains "submodule is skipped" "$output" "skip   vendor/lib (submodule)"
+  assert_contains "deleted tracked file is skipped" "$output" "skip   deleted.txt (missing from the work tree)"
+  assert_contains "symlink to a file is uploaded" "$output" "create file-link"
+  assert_contains "summary reports skipped paths" "$output" \
+    "6 tracked files processed: 2 created, 0 updated, 4 skipped."
+  calls="$(grep -- '--upload' "$case_root/calls" | sed 's/.*--upload //; s/ --format.*//' | sort | tr '\n' ' ')"
+  assert_eq "only regular files are uploaded" "file-link skills/SKILL.md " "$calls"
+}
+
+test_prune_refuses_when_nothing_is_mirrored() {
+  local case_root="$test_root/prune-all-skipped" repo fake_bin output status
+  repo="$case_root/repo"; fake_bin="$case_root/bin"
+  init_repo "$repo"; make_fake_gws "$fake_bin"
+  mkdir -p "$repo/target"
+  ln -s target "$repo/link"
+  git -C "$repo" add -- link
+  : > "$case_root/trashed"
+
+  output="$(PATH="$fake_bin:$PATH" FAKE_GWS_TREE="$prune_tree" FAKE_GWS_TRASHED="$case_root/trashed" \
+    FAKE_GWS_CALLS="$case_root/calls" FAKE_GWS_PARAMS="$case_root/params" \
+    "$script" --folder-id root-folder --repo "$repo" --prune --yes 2>&1)"
+  status=$?
+  assert_eq "prune with only skipped paths exits 4" "4" "$status"
+  assert_contains "prune with only skipped paths is explained" "$output" "refusing to prune"
+  assert_eq "prune with only skipped paths trashes nothing" "" "$(cat "$case_root/trashed")"
+}
+
 test_skill_documents_prune() {
   local skill_text
   skill_text="$(cat "$skill")"
@@ -268,10 +318,12 @@ test_missing_option_values
 test_prune_flag_validation
 test_create_update_and_default_repo
 test_drive_query_escaping
+test_skips_paths_that_are_not_regular_files
 test_default_sync_never_trashes
 test_prune_preview_is_read_only
 test_prune_apply_trashes_children_before_folders
 test_prune_refuses_empty_repo
+test_prune_refuses_when_nothing_is_mirrored
 
 echo ""
 echo "$passed passed, $failed failed"

@@ -19,6 +19,9 @@ nested directory structure as Drive subfolders. One-directional, **local git →
 - **Never deletes by default** — stale Drive copies of files that were removed or renamed locally
   are **left as-is**. Removing them is a separate, explicitly requested step: see
   [Prune sync](#prune-sync) below.
+- **Regular files only** — a tracked path that isn't a regular file is skipped and logged as
+  `skip <path> (<reason>)`: a symlink to a directory, a dangling symlink, a submodule, or a tracked
+  file deleted from the work tree. A symlink to a regular file uploads the content it points to.
 
 ## Prerequisites
 
@@ -67,8 +70,9 @@ Supply `--folder-id` with the requested Drive folder id. Omit `--repo` to use th
 Omit `--prune` unless a prune sync was explicitly requested.
 
 Run it **after committing changes** (and, for generated artifacts, after regenerating them) so the
-mirror reflects the current tracked tree. The script prints a per-file `create`/`update` log and a
-`N created, M updated` summary.
+mirror reflects the current tracked tree. The script prints a per-file `create`/`update`/`skip` log
+and a `N created, M updated` summary, with `, K skipped` appended when any path was skipped. Mention
+the skipped paths when reporting the result; they are expected, not a failure.
 
 The script itself always needs `--folder-id`: resolve the id first, then pass it through.
 
@@ -94,7 +98,9 @@ Pruning is always two runs:
 
 Never skip the preview, never add `--yes` on the first run, and stop if the preview looks wrong (for
 example the list contains files that clearly belong to another repo — the folder id is probably
-wrong). The script refuses to prune when the repo has no tracked files (exit 4).
+wrong). Skipped paths are not mirrored, so a Drive copy left from an earlier sync of one shows up
+in the preview as stale. The script refuses to prune when the repo has no tracked files it can
+mirror (exit 4).
 
 ## Pin the target folder (after a successful sync)
 
