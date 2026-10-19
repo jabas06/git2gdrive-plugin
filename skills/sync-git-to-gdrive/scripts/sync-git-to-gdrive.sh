@@ -11,6 +11,9 @@
 #
 # Mirrors exactly the output of `git ls-files` (tracked files only), recreating the nested
 # directory structure as Drive subfolders. Runs independently of the agent client.
+# A tracked path that is not a regular file — a symlink to a directory, a dangling symlink, a
+# submodule, or a file deleted from the work tree — is skipped and reported, never uploaded.
+# A symlink to a regular file uploads the content it points to.
 #
 # Prerequisites: git, gws (authenticated Google Workspace CLI), jq.
 #
@@ -36,7 +39,7 @@ set -euo pipefail
 FOLDER_MIME="application/vnd.google-apps.folder"
 
 usage() {
-  sed -n '3,32p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '3,35p' "$0" | sed 's/^# \{0,1\}//'
 }
 
 # --- parse args ---
@@ -106,6 +109,7 @@ KEEP_IDS=$'\n'
 
 created=0
 updated=0
+skipped=0
 trashed_files=0
 trashed_folders=0
 preserved=0
@@ -188,6 +192,24 @@ sync_file() {
   fi
 }
 
+# skip_reason <path> — why a tracked path can't be uploaded as a file; empty when it can.
+skip_reason() {
+  local path="$1"
+  if [[ -f "$path" ]]; then
+    return 0
+  elif [[ -L "$path" && -d "$path" ]]; then
+    echo "symlink to a directory"
+  elif [[ -L "$path" ]]; then
+    echo "dangling symlink"
+  elif [[ -d "$path" ]]; then
+    echo "submodule"
+  elif [[ -e "$path" ]]; then
+    echo "not a regular file"
+  else
+    echo "missing from the work tree"
+  fi
+}
+
 # --- prune (opt-in) ---
 
 # is_kept <id> — true when the id was created/updated by this run or is a folder the tree needs.
@@ -255,21 +277,28 @@ prune_folder() {
 
 main() {
   echo "Mirroring git-tracked files of $repo_root -> Drive folder ${folder_id}" >&2
-  local count=0
+  local count=0 reason skipped_note=""
   while IFS= read -r -d '' path; do
-    sync_file "$path"
     count=$((count + 1))
+    reason="$(skip_reason "$path")"
+    if [[ -n "$reason" ]]; then
+      echo "  skip   $path ($reason)" >&2
+      skipped=$((skipped + 1))
+      continue
+    fi
+    sync_file "$path"
   done < <(git ls-files -z)
+  [[ "$skipped" -gt 0 ]] && skipped_note=", ${skipped} skipped"
 
   if [[ "$prune" -eq 0 ]]; then
     echo "" >&2
-    echo "Done. ${count} tracked files processed: ${created} created, ${updated} updated." >&2
+    echo "Done. ${count} tracked files processed: ${created} created, ${updated} updated${skipped_note}." >&2
     return 0
   fi
 
-  if [[ "$count" -eq 0 ]]; then
+  if [[ $((created + updated)) -eq 0 ]]; then
     echo "" >&2
-    echo "error: refusing to prune — the repo has no tracked files, so everything under the Drive folder would be trashed." >&2
+    echo "error: refusing to prune — the repo has no tracked files to mirror, so everything under the Drive folder would be trashed." >&2
     exit 4
   fi
 
@@ -279,9 +308,9 @@ main() {
 
   echo "" >&2
   if [[ "$yes" -eq 1 ]]; then
-    echo "Done. ${count} tracked files processed: ${created} created, ${updated} updated, ${trashed_files} files trashed, ${trashed_folders} folders trashed, ${preserved} Drive-native items kept." >&2
+    echo "Done. ${count} tracked files processed: ${created} created, ${updated} updated${skipped_note}, ${trashed_files} files trashed, ${trashed_folders} folders trashed, ${preserved} Drive-native items kept." >&2
   else
-    echo "Done. ${count} tracked files processed: ${created} created, ${updated} updated, ${trashed_files} files would be trashed, ${trashed_folders} folders would be trashed, ${preserved} Drive-native items kept." >&2
+    echo "Done. ${count} tracked files processed: ${created} created, ${updated} updated${skipped_note}, ${trashed_files} files would be trashed, ${trashed_folders} folders would be trashed, ${preserved} Drive-native items kept." >&2
     echo "Nothing was removed. Re-run with --prune --yes to move the listed items to the Drive trash." >&2
   fi
 }
